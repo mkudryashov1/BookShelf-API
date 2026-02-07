@@ -1,7 +1,7 @@
 package main
 
 import (
-	"bookshelf-api/internal/handlers"
+	"bookshelf-api/internal/routes"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -10,7 +10,7 @@ import (
 func main() {
 	router := chi.NewRouter()
 
-	router.Get("/health", handlers.Health)
+	routes.Register(router)
 
 	http.ListenAndServe(":8080", router)
 }
