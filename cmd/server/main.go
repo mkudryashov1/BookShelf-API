@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bookshelf-api/internal/config"
 	"bookshelf-api/internal/routes"
 	"net/http"
 
@@ -12,5 +13,8 @@ func main() {
 
 	routes.Register(router)
 
-	http.ListenAndServe(":8080", router)
+	cfg := config.Load()
+	addr := ":" + cfg.HTTPPort
+
+	http.ListenAndServe(addr, router)
 }
