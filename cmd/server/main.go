@@ -48,5 +48,5 @@ func main() {
 	addr := ":" + cfg.HTTPPort
 	log.Println("starting server on", addr)
 
-	http.ListenAndServe(addr, router)
+	log.Fatal(http.ListenAndServe(addr, router))
 }
