@@ -23,6 +23,7 @@ func Load() *Config {
 
 	return &Config{
 		HTTPPort: port,
+		DBDSN:    dbDsn,
 	}
 
 }
