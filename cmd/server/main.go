@@ -27,11 +27,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 
-	if err := db.PingContext(ctx); err != nil {
-		log.Fatal("failed to connect to db:", err)
+		err := db.PingContext(ctx)
+		cancel()
+
+		if err == nil {
+			log.Println("database is ready")
+			break
+		}
+
+		log.Println("waiting for database...")
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	router := chi.NewRouter()

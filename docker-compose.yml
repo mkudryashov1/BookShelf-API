@@ -6,10 +6,10 @@ services:
     container_name: bookshelf-app
     ports:
       - "8080:8080"
-    depends_on:
-      - db
     environment:
       DB_DSN: postgres://postgres:postgres@db:5432/bookshelf?sslmode=disable
+    depends_on:
+      - db      
   
 
   db:
