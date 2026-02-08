@@ -10,7 +10,7 @@ COPY . .
 RUN go build -o server ./cmd/server
 
 # ---------- stage 2: runtime ----------
-FROM alpine:latest
+FROM alpine:3.19
 
 WORKDIR /app
 
