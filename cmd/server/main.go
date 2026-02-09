@@ -2,6 +2,8 @@ package main
 
 import (
 	"bookshelf-api/internal/config"
+	"bookshelf-api/internal/handlers"
+	"bookshelf-api/internal/repository"
 	"bookshelf-api/internal/routes"
 	"context"
 	"database/sql"
@@ -42,8 +44,11 @@ func main() {
 		time.Sleep(500 * time.Millisecond)
 	}
 
+	bookRepo := repository.NewPostgresBookRepository(db)
+	bookHandler := handlers.NewBookHandler(bookRepo)
+
 	router := chi.NewRouter()
-	routes.Register(router)
+	routes.Register(router, bookHandler)
 
 	addr := ":" + cfg.HTTPPort
 	log.Println("starting server on", addr)
