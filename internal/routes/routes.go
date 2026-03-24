@@ -11,5 +11,6 @@ func Register(router chi.Router, bookHandler *handlers.BookHandler) {
 
 	router.Route("/books", func(r chi.Router) {
 		r.Post("/", bookHandler.CreateBook)
+		r.Get("/{id}", bookHandler.GetBookByID)
 	})
 }
