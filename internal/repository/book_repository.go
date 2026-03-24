@@ -9,6 +9,9 @@ import (
 type BookRepository interface {
 	Create(ctx context.Context, book *models.Book) error
 	GetByID(ctx context.Context, id uint) (*models.Book, error)
+	List(ctx context.Context, limit, offset int) ([]models.Book, error)
+	Update(ctx context.Context, book *models.Book) error
+	Delete(ctx context.Context, id uint) error
 }
 type PostgresBookRepository struct {
 	db *sql.DB
@@ -64,4 +67,96 @@ func (r *PostgresBookRepository) GetByID(ctx context.Context, id uint) (*models.
 	}
 
 	return &book, nil
+}
+
+func (r *PostgresBookRepository) List(ctx context.Context, limit, offset int) ([]models.Book, error) {
+	query := `
+		SELECT id, title, author, year, isbn, rating, out_of_stock, created_at, updated_at
+		FROM books
+		ORDER BY id
+		LIMIT $1 OFFSET $2
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var books []models.Book
+
+	for rows.Next() {
+		var b models.Book
+		err := rows.Scan(
+			&b.ID,
+			&b.Title,
+			&b.Author,
+			&b.Year,
+			&b.ISBN,
+			&b.Rating,
+			&b.OutOfStock,
+			&b.CreatedAt,
+			&b.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		books = append(books, b)
+	}
+
+	return books, nil
+}
+
+func (r *PostgresBookRepository) Update(ctx context.Context, book *models.Book) error {
+	query := `
+		UPDATE books
+		SET title = $1, author = $2, year = $3, isbn = $4, rating = $5, out_of_stock = $6, updated_at = NOW()
+		WHERE id = $7
+	`
+
+	res, err := r.db.ExecContext(
+		ctx,
+		query,
+		book.Title,
+		book.Author,
+		book.Year,
+		book.ISBN,
+		book.Rating,
+		book.OutOfStock,
+		book.ID,
+	)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (r *PostgresBookRepository) Delete(ctx context.Context, id uint) error {
+	query := `DELETE FROM books WHERE id = $1`
+
+	res, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
 }
