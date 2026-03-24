@@ -15,6 +15,10 @@ type BookHandler struct {
 	repo repository.BookRepository
 }
 
+type PostgresBookRepository struct {
+	db *sql.DB
+}
+
 func NewBookHandler(repo repository.BookRepository) *BookHandler {
 	return &BookHandler{repo: repo}
 }
@@ -139,4 +143,36 @@ func (h *BookHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *BookHandler) MarkOutOfStock(w http.ResponseWriter, r *http.Request) {
+	idParam := chi.URLParam(r, "id")
+
+	id, err := strconv.Atoi(idParam)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	err = h.repo.MarkOutOfStock(r.Context(), uint(id))
+	if err != nil {
+		if err == sql.ErrNoRows {
+			http.Error(w, "book not found", http.StatusNotFound)
+			return
+		}
+		http.Error(w, "failed to update book", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *BookHandler) RecommendBooks(w http.ResponseWriter, r *http.Request) {
+	books, err := h.repo.GetTopRated(r.Context(), 5)
+	if err != nil {
+		http.Error(w, "failed to get recommendations", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(books)
 }
