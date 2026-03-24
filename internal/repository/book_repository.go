@@ -12,6 +12,8 @@ type BookRepository interface {
 	List(ctx context.Context, limit, offset int) ([]models.Book, error)
 	Update(ctx context.Context, book *models.Book) error
 	Delete(ctx context.Context, id uint) error
+	MarkOutOfStock(ctx context.Context, id uint) error
+	GetTopRated(ctx context.Context, limit int) ([]models.Book, error)
 }
 type PostgresBookRepository struct {
 	db *sql.DB
@@ -159,4 +161,67 @@ func (r *PostgresBookRepository) Delete(ctx context.Context, id uint) error {
 	}
 
 	return nil
+}
+
+func (r *PostgresBookRepository) MarkOutOfStock(ctx context.Context, id uint) error {
+	query := `
+		UPDATE books
+		SET out_of_stock = true, updated_at = NOW()
+		WHERE id = $1
+	`
+
+	res, err := r.db.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+func (r *PostgresBookRepository) GetTopRated(ctx context.Context, limit int) ([]models.Book, error) {
+	query := `
+		SELECT id, title, author, year, isbn, rating, out_of_stock, created_at, updated_at
+		FROM books
+		WHERE rating IS NOT NULL
+		ORDER BY rating DESC
+		LIMIT $1
+	`
+
+	rows, err := r.db.QueryContext(ctx, query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	books := []models.Book{}
+
+	for rows.Next() {
+		var b models.Book
+		err := rows.Scan(
+			&b.ID,
+			&b.Title,
+			&b.Author,
+			&b.Year,
+			&b.ISBN,
+			&b.Rating,
+			&b.OutOfStock,
+			&b.CreatedAt,
+			&b.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		books = append(books, b)
+	}
+
+	return books, nil
 }
