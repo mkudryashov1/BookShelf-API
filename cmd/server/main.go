@@ -7,8 +7,12 @@ import (
 	"bookshelf-api/internal/routes"
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -28,16 +32,29 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer db.Close()
+
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
 
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		pingCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 
-		err := db.PingContext(ctx)
+		err := db.PingContext(pingCtx)
 		cancel()
 
 		if err == nil {
 			log.Println("database is ready")
 			break
+		}
+
+		if ctx.Err() != nil {
+			log.Println("shutdown requested while waiting for database")
+			return
 		}
 
 		log.Println("waiting for database...")
@@ -50,8 +67,45 @@ func main() {
 	router := chi.NewRouter()
 	routes.Register(router, bookHandler)
 
-	addr := ":" + cfg.HTTPPort
-	log.Println("starting server on", addr)
+	server := &http.Server{
+		Addr:              ":" + cfg.HTTPPort,
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 
-	log.Fatal(http.ListenAndServe(addr, router))
+	serverErr := make(chan error, 1)
+
+	go func() {
+		log.Println("starting server on", server.Addr)
+
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
+	}()
+
+	select {
+	case err := <-serverErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("server error: %v", err)
+		}
+
+	case <-ctx.Done():
+		log.Println("shutdown signal received")
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("graceful shutdown failed: %v", err)
+		return
+	}
+
+	log.Println("server stopped")
 }
