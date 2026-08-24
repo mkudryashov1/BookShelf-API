@@ -23,27 +23,27 @@ func (h *BookHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
 	var book models.Book
 
 	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid JSON")
 		return
 	}
 
 	if book.Title == "" || book.Author == "" {
-		http.Error(w, "title and author are required", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "title and author are required")
 		return
 	}
 
 	if book.Year < 0 {
-		http.Error(w, "year must be greater than or equal to 0", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "year must be greater than or equal to 0")
 		return
 	}
 
 	if book.Rating != nil && (*book.Rating < 1 || *book.Rating > 5) {
-		http.Error(w, "rating must be between 1 and 5", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "rating must be between 1 and 5")
 		return
 	}
 
 	if err := h.repo.Create(r.Context(), &book); err != nil {
-		http.Error(w, "failed to create book", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "failed to create book")
 		return
 	}
 
@@ -51,7 +51,7 @@ func (h *BookHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	if err := json.NewEncoder(w).Encode(book); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "failed to encode response")
 		return
 	}
 }
@@ -60,23 +60,25 @@ func (h *BookHandler) GetBookByID(w http.ResponseWriter, r *http.Request) {
 	idParam := chi.URLParam(r, "id")
 
 	id, err := strconv.Atoi(idParam)
-	if err != nil {
-		http.Error(w, "invalid book id", http.StatusBadRequest)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid book id")
 		return
 	}
 
 	book, err := h.repo.GetByID(r.Context(), uint(id))
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "book not found", http.StatusNotFound)
+			writeError(w, http.StatusNotFound, "book not found")
 			return
 		}
-		http.Error(w, "failed to get book", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "failed to get book")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(book)
+	if err := json.NewEncoder(w).Encode(book); err != nil {
+		return
+	}
 }
 
 func (h *BookHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
@@ -93,7 +95,7 @@ func (h *BookHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
 	if value := query.Get("page"); value != "" {
 		parsed, err := strconv.Atoi(value)
 		if err != nil || parsed < 1 {
-			http.Error(w, "page must be a positive integer", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "page must be a positive integer")
 			return
 		}
 
@@ -101,7 +103,7 @@ func (h *BookHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if page > maxPage {
-		http.Error(w, "page is too large", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "page is too large")
 		return
 	}
 
@@ -109,12 +111,12 @@ func (h *BookHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
 	if value := query.Get("limit"); value != "" {
 		parsed, err := strconv.Atoi(value)
 		if err != nil || parsed < 1 {
-			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "limit must be a positive integer")
 			return
 		}
 
 		if parsed > maxLimit {
-			http.Error(w, "limit must be less than or equal to 100", http.StatusBadRequest)
+			writeError(w, http.StatusBadRequest, "limit must be less than or equal to 100")
 			return
 		}
 
@@ -125,14 +127,13 @@ func (h *BookHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
 
 	books, err := h.repo.List(r.Context(), limit, offset)
 	if err != nil {
-		http.Error(w, "failed to list books", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "failed to list books")
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 
 	if err := json.NewEncoder(w).Encode(books); err != nil {
-		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
 	}
 }
@@ -141,48 +142,69 @@ func (h *BookHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
 	idParam := chi.URLParam(r, "id")
 
 	id, err := strconv.Atoi(idParam)
-	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid book id")
 		return
 	}
 
 	var book models.Book
+
 	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		writeError(w, http.StatusBadRequest, "invalid JSON")
+		return
+	}
+
+	if book.Title == "" || book.Author == "" {
+		writeError(w, http.StatusBadRequest, "title and author are required")
+		return
+	}
+
+	if book.Year < 0 {
+		writeError(w, http.StatusBadRequest, "year must be greater than or equal to 0")
+		return
+	}
+
+	if book.Rating != nil && (*book.Rating < 1 || *book.Rating > 5) {
+		writeError(w, http.StatusBadRequest, "rating must be between 1 and 5")
 		return
 	}
 
 	book.ID = uint(id)
 
-	err = h.repo.Update(r.Context(), &book)
-	if err != nil {
+	if err := h.repo.Update(r.Context(), &book); err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "book not found", http.StatusNotFound)
+			writeError(w, http.StatusNotFound, "book not found")
 			return
 		}
-		http.Error(w, "failed to update book", http.StatusInternalServerError)
+
+		writeError(w, http.StatusInternalServerError, "failed to update book")
 		return
 	}
 
-	json.NewEncoder(w).Encode(book)
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(book); err != nil {
+		return
+	}
 }
 
 func (h *BookHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
 	idParam := chi.URLParam(r, "id")
 
 	id, err := strconv.Atoi(idParam)
-	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid book id")
 		return
 	}
 
 	err = h.repo.Delete(r.Context(), uint(id))
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "book not found", http.StatusNotFound)
+			writeError(w, http.StatusNotFound, "book not found")
 			return
 		}
-		http.Error(w, "failed to delete book", http.StatusInternalServerError)
+
+		writeError(w, http.StatusInternalServerError, "failed to delete book")
 		return
 	}
 
@@ -193,18 +215,19 @@ func (h *BookHandler) MarkOutOfStock(w http.ResponseWriter, r *http.Request) {
 	idParam := chi.URLParam(r, "id")
 
 	id, err := strconv.Atoi(idParam)
-	if err != nil {
-		http.Error(w, "invalid id", http.StatusBadRequest)
+	if err != nil || id <= 0 {
+		writeError(w, http.StatusBadRequest, "invalid book id")
 		return
 	}
 
 	err = h.repo.MarkOutOfStock(r.Context(), uint(id))
 	if err != nil {
 		if err == sql.ErrNoRows {
-			http.Error(w, "book not found", http.StatusNotFound)
+			writeError(w, http.StatusNotFound, "book not found")
 			return
 		}
-		http.Error(w, "failed to update book", http.StatusInternalServerError)
+
+		writeError(w, http.StatusInternalServerError, "failed to update book")
 		return
 	}
 
@@ -214,9 +237,13 @@ func (h *BookHandler) MarkOutOfStock(w http.ResponseWriter, r *http.Request) {
 func (h *BookHandler) RecommendBooks(w http.ResponseWriter, r *http.Request) {
 	books, err := h.repo.GetTopRated(r.Context(), 5)
 	if err != nil {
-		http.Error(w, "failed to get recommendations", http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, "failed to get recommendations")
 		return
 	}
 
-	json.NewEncoder(w).Encode(books)
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(books); err != nil {
+		return
+	}
 }
