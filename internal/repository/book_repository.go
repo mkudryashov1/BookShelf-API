@@ -73,7 +73,16 @@ func (r *PostgresBookRepository) GetByID(ctx context.Context, id uint) (*models.
 
 func (r *PostgresBookRepository) List(ctx context.Context, limit, offset int) ([]models.Book, error) {
 	query := `
-		SELECT id, title, author, year, isbn, rating, out_of_stock, created_at, updated_at
+		SELECT
+			id,
+			title,
+			author,
+			year,
+			isbn,
+			rating,
+			out_of_stock,
+			created_at,
+			updated_at
 		FROM books
 		ORDER BY id
 		LIMIT $1 OFFSET $2
@@ -85,25 +94,30 @@ func (r *PostgresBookRepository) List(ctx context.Context, limit, offset int) ([
 	}
 	defer rows.Close()
 
-	var books []models.Book
+	books := make([]models.Book, 0, limit)
 
 	for rows.Next() {
-		var b models.Book
-		err := rows.Scan(
-			&b.ID,
-			&b.Title,
-			&b.Author,
-			&b.Year,
-			&b.ISBN,
-			&b.Rating,
-			&b.OutOfStock,
-			&b.CreatedAt,
-			&b.UpdatedAt,
-		)
-		if err != nil {
+		var book models.Book
+
+		if err := rows.Scan(
+			&book.ID,
+			&book.Title,
+			&book.Author,
+			&book.Year,
+			&book.ISBN,
+			&book.Rating,
+			&book.OutOfStock,
+			&book.CreatedAt,
+			&book.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
-		books = append(books, b)
+
+		books = append(books, book)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return books, nil
@@ -189,10 +203,19 @@ func (r *PostgresBookRepository) MarkOutOfStock(ctx context.Context, id uint) er
 
 func (r *PostgresBookRepository) GetTopRated(ctx context.Context, limit int) ([]models.Book, error) {
 	query := `
-		SELECT id, title, author, year, isbn, rating, out_of_stock, created_at, updated_at
+		SELECT
+			id,
+			title,
+			author,
+			year,
+			isbn,
+			rating,
+			out_of_stock,
+			created_at,
+			updated_at
 		FROM books
 		WHERE rating IS NOT NULL
-		ORDER BY rating DESC
+		ORDER BY rating DESC, id
 		LIMIT $1
 	`
 
@@ -202,25 +225,30 @@ func (r *PostgresBookRepository) GetTopRated(ctx context.Context, limit int) ([]
 	}
 	defer rows.Close()
 
-	books := []models.Book{}
+	books := make([]models.Book, 0, limit)
 
 	for rows.Next() {
-		var b models.Book
-		err := rows.Scan(
-			&b.ID,
-			&b.Title,
-			&b.Author,
-			&b.Year,
-			&b.ISBN,
-			&b.Rating,
-			&b.OutOfStock,
-			&b.CreatedAt,
-			&b.UpdatedAt,
-		)
-		if err != nil {
+		var book models.Book
+
+		if err := rows.Scan(
+			&book.ID,
+			&book.Title,
+			&book.Author,
+			&book.Year,
+			&book.ISBN,
+			&book.Rating,
+			&book.OutOfStock,
+			&book.CreatedAt,
+			&book.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
-		books = append(books, b)
+
+		books = append(books, book)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, err
 	}
 
 	return books, nil
