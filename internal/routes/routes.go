@@ -2,12 +2,18 @@ package routes
 
 import (
 	"bookshelf-api/internal/handlers"
+	"bookshelf-api/internal/health"
 
 	"github.com/go-chi/chi/v5"
 )
 
-func Register(router chi.Router, bookHandler *handlers.BookHandler) {
-	router.Get("/health", handlers.Health)
+func Register(
+	router chi.Router,
+	bookHandler *handlers.BookHandler,
+	healthHandler *health.Handler,
+) {
+	router.Get("/healthz", healthHandler.Healthz)
+	router.Get("/readyz", healthHandler.Readyz)
 
 	router.Route("/books", func(r chi.Router) {
 		r.Post("/", bookHandler.CreateBook)

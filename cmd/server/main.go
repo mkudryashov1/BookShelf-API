@@ -3,6 +3,7 @@ package main
 import (
 	"bookshelf-api/internal/config"
 	"bookshelf-api/internal/handlers"
+	"bookshelf-api/internal/health"
 	"bookshelf-api/internal/repository"
 	"bookshelf-api/internal/routes"
 	"context"
@@ -63,9 +64,10 @@ func main() {
 
 	bookRepo := repository.NewPostgresBookRepository(db)
 	bookHandler := handlers.NewBookHandler(bookRepo)
+	healthHandler := health.NewHandler(db)
 
 	router := chi.NewRouter()
-	routes.Register(router, bookHandler)
+	routes.Register(router, bookHandler, healthHandler)
 
 	server := &http.Server{
 		Addr:              ":" + cfg.HTTPPort,
