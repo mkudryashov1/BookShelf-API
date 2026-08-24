@@ -1,0 +1,35 @@
+services:
+  test-db:
+    image: postgres:16
+    container_name: bookshelf-test-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: bookshelf_test
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bookshelf_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+
+  test-migrate:
+    image: migrate/migrate:v4.19.1
+    container_name: bookshelf-test-migrate
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      [
+        "-path=/migrations",
+        "-database=postgres://postgres:postgres@test-db:5432/bookshelf_test?sslmode=disable",
+        "up"
+      ]
+    depends_on:
+      test-db:
+        condition: service_healthy
+
+volumes:
+  postgres_test_data:
