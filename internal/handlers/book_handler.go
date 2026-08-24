@@ -15,10 +15,6 @@ type BookHandler struct {
 	repo repository.BookRepository
 }
 
-type PostgresBookRepository struct {
-	db *sql.DB
-}
-
 func NewBookHandler(repo repository.BookRepository) *BookHandler {
 	return &BookHandler{repo: repo}
 }
@@ -28,6 +24,7 @@ func (h *BookHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&book); err != nil {
 		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
 	}
 
 	if book.Title == "" || book.Author == "" {
@@ -35,15 +32,28 @@ func (h *BookHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.repo.Create(r.Context(), &book)
-	if err != nil {
+	if book.Year < 0 {
+		http.Error(w, "year must be greater than or equal to 0", http.StatusBadRequest)
+		return
+	}
+
+	if book.Rating != nil && (*book.Rating < 1 || *book.Rating > 5) {
+		http.Error(w, "rating must be between 1 and 5", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.repo.Create(r.Context(), &book); err != nil {
 		http.Error(w, "failed to create book", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(book)
+
+	if err := json.NewEncoder(w).Encode(book); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *BookHandler) GetBookByID(w http.ResponseWriter, r *http.Request) {
@@ -70,16 +80,45 @@ func (h *BookHandler) GetBookByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BookHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
+	const (
+		defaultPage  = 1
+		defaultLimit = 10
+		maxLimit     = 100
+		maxPage      = 1_000_000
+	)
+
 	query := r.URL.Query()
 
-	page, _ := strconv.Atoi(query.Get("page"))
-	limit, _ := strconv.Atoi(query.Get("limit"))
+	page := defaultPage
+	if value := query.Get("page"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 {
+			http.Error(w, "page must be a positive integer", http.StatusBadRequest)
+			return
+		}
 
-	if page <= 0 {
-		page = 1
+		page = parsed
 	}
-	if limit <= 0 {
-		limit = 10
+
+	if page > maxPage {
+		http.Error(w, "page is too large", http.StatusBadRequest)
+		return
+	}
+
+	limit := defaultLimit
+	if value := query.Get("limit"); value != "" {
+		parsed, err := strconv.Atoi(value)
+		if err != nil || parsed < 1 {
+			http.Error(w, "limit must be a positive integer", http.StatusBadRequest)
+			return
+		}
+
+		if parsed > maxLimit {
+			http.Error(w, "limit must be less than or equal to 100", http.StatusBadRequest)
+			return
+		}
+
+		limit = parsed
 	}
 
 	offset := (page - 1) * limit
@@ -90,7 +129,12 @@ func (h *BookHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(books)
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := json.NewEncoder(w).Encode(books); err != nil {
+		http.Error(w, "failed to encode response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func (h *BookHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
