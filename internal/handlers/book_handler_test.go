@@ -8,11 +8,14 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 )
 
 type mockBookRepository struct {
-	createFunc func(context.Context, *models.Book) error
-	listFunc   func(context.Context, int, int) ([]models.Book, error)
+	createFunc  func(context.Context, *models.Book) error
+	getByIDFunc func(context.Context, uint) (*models.Book, error)
+	listFunc    func(context.Context, int, int) ([]models.Book, error)
 }
 
 func (m *mockBookRepository) Create(ctx context.Context, book *models.Book) error {
@@ -23,7 +26,11 @@ func (m *mockBookRepository) Create(ctx context.Context, book *models.Book) erro
 	return nil
 }
 
-func (m *mockBookRepository) GetByID(context.Context, uint) (*models.Book, error) {
+func (m *mockBookRepository) GetByID(ctx context.Context, id uint) (*models.Book, error) {
+	if m.getByIDFunc != nil {
+		return m.getByIDFunc(ctx, id)
+	}
+
 	return nil, sql.ErrNoRows
 }
 
@@ -187,4 +194,54 @@ func TestListBooksInvalidLimit(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
 	}
+}
+
+func TestGetBookByID(t *testing.T) {
+	repo := &mockBookRepository{
+		getByIDFunc: func(ctx context.Context, id uint) (*models.Book, error) {
+			if id != 1 {
+				t.Errorf("expected id 1, got %d", id)
+			}
+
+			return &models.Book{
+				ID:     1,
+				Title:  "1984",
+				Author: "George Orwell",
+				Year:   1949,
+			}, nil
+		},
+	}
+
+	handler := NewBookHandler(repo)
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/books/1",
+		nil,
+	)
+
+	req = withURLParam(req, "id", "1")
+
+	rec := httptest.NewRecorder()
+
+	handler.GetBookByID(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	if !strings.Contains(rec.Body.String(), `"id":1`) {
+		t.Fatalf("expected response to contain book id, got %s", rec.Body.String())
+	}
+}
+
+func withURLParam(req *http.Request, key, value string) *http.Request {
+	ctx := chi.NewRouteContext()
+	ctx.URLParams.Add(key, value)
+
+	return req.WithContext(context.WithValue(
+		req.Context(),
+		chi.RouteCtxKey,
+		ctx,
+	))
 }
