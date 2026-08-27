@@ -4,12 +4,13 @@ import (
 	"bookshelf-api/internal/config"
 	"bookshelf-api/internal/handlers"
 	"bookshelf-api/internal/health"
+	"bookshelf-api/internal/middleware"
 	"bookshelf-api/internal/repository"
 	"bookshelf-api/internal/routes"
 	"context"
 	"database/sql"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,16 +23,20 @@ import (
 )
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	slog.SetDefault(logger)
+
 	err := godotenv.Load()
 	if err != nil {
-		log.Println("no .env file found")
+		logger.Warn("no .env file found")
 	}
 
 	cfg := config.Load()
 
 	db, err := sql.Open("pgx", cfg.DBDSN)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("failed to open database", "error", err)
+		return
 	}
 	defer db.Close()
 
@@ -49,16 +54,16 @@ func main() {
 		cancel()
 
 		if err == nil {
-			log.Println("database is ready")
+			logger.Info("database is ready")
 			break
 		}
 
 		if ctx.Err() != nil {
-			log.Println("shutdown requested while waiting for database")
+			logger.Info("shutdown requested while waiting for database")
 			return
 		}
 
-		log.Println("waiting for database...")
+		logger.Info("waiting for database")
 		time.Sleep(500 * time.Millisecond)
 	}
 
@@ -67,6 +72,8 @@ func main() {
 	healthHandler := health.NewHandler(db)
 
 	router := chi.NewRouter()
+	router.Use(middleware.Logging(logger))
+
 	routes.Register(router, bookHandler, healthHandler)
 
 	server := &http.Server{
@@ -81,7 +88,7 @@ func main() {
 	serverErr := make(chan error, 1)
 
 	go func() {
-		log.Println("starting server on", server.Addr)
+		logger.Info("starting server", "addr", server.Addr)
 
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
@@ -91,11 +98,11 @@ func main() {
 	select {
 	case err := <-serverErr:
 		if !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("server error: %v", err)
+			logger.Error("server error", "error", err)
 		}
 
 	case <-ctx.Done():
-		log.Println("shutdown signal received")
+		logger.Info("shutdown signal received")
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(
@@ -105,9 +112,9 @@ func main() {
 	defer cancel()
 
 	if err := server.Shutdown(shutdownCtx); err != nil {
-		log.Printf("graceful shutdown failed: %v", err)
+		logger.Error("graceful shutdown failed", "error", err)
 		return
 	}
 
-	log.Println("server stopped")
+	logger.Info("server stopped")
 }
